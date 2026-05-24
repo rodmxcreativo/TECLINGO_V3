@@ -1,0 +1,153 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // God-mode: Identifies the Ghost SuperAdmin
+    function isSuperAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function getProfile(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function isDirectorOf(instId) {
+      return isSignedIn() && get(/databases/$(database)/documents/institutions/$(instId)).data.directorId == request.auth.uid;
+    }
+
+    // --- Entity Validations ---
+
+    function isValidProfile(data) {
+      let requiredFields = ['id', 'name', 'email', 'institutionId', 'role'];
+      return data.keys().hasAll(requiredFields)
+        && data.id == request.auth.uid
+        && data.name is string && data.name.size() <= 150
+        && data.institutionId is string
+        && data.role in ['DIRECTOR', 'DOCENTE', 'ALUMNO', 'SUPERADMIN']
+        && (!('curp' in data) || (data.curp is string && data.curp.size() <= 20))
+        && (!('controlNumber' in data) || (data.controlNumber is string && data.controlNumber.size() <= 20))
+        && (!('career' in data) || (data.career is string && data.career.size() <= 100));
+    }
+
+    function isValidInstitution(data) {
+      let requiredFields = ['id', 'name', 'directorId', 'registrationCode', 'isRegistrationActive'];
+      return data.keys().hasAll(requiredFields)
+        && data.name is string && data.name.size() <= 200
+        && data.directorId == request.auth.uid;
+    }
+
+    // --- Collections ---
+
+    // Identity Collection
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isSuperAdmin();
+      allow list: if isSuperAdmin();
+      
+      allow create: if isOwner(userId) && isValidProfile(incoming()) && isValidId(userId);
+      
+      allow update: if isSuperAdmin() || (
+        isOwner(userId) && isValidProfile(incoming()) && (
+          // Action: Accept Terms (Contract)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['hasAcceptedTerms', 'termsAcceptedAt', 'termsAcceptedIp'])) ||
+          // Action: Update Professional Info
+          (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'avatar', 'bio', 'specialty', 'experience', 'certifications', 'phone', 'birthDate'])) ||
+          // Action: Bind to Institution (First Access)
+          (existing().institutionId == '' && incoming().diff(existing()).affectedKeys().hasOnly(['institutionId']))
+        )
+      );
+    }
+
+    // Multi-tenant Institutions
+    match /institutions/{instId} {
+      allow get: if isSignedIn(); // Needed for registration validation
+      allow list: if isSuperAdmin();
+      
+      allow create: if isSuperAdmin() || (isSignedIn() && isValidInstitution(incoming()));
+      
+      allow update: if isSuperAdmin() || (
+        isDirectorOf(instId) && isValidInstitution(incoming()) && (
+          // Action: Manage Registration Code
+          (incoming().diff(existing()).affectedKeys().hasOnly(['registrationCode', 'codeExpirationDate', 'isRegistrationActive'])) ||
+          // Action: Update Settings
+          (incoming().diff(existing()).affectedKeys().hasOnly(['name']))
+        )
+      );
+    }
+
+    // Global Activation Codes (Licensing)
+    match /activationCodes/{codeId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && existing().status == 'AVAILABLE');
+      allow write: if isSuperAdmin();
+    }
+
+    // Hidden Admin Registry
+    match /admins/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+      allow write: if false; // Managed via Firebase Console for maximum security
+    }
+
+    // AI Tutor Knowledge Base
+    match /tutor_knowledge/{knowledgeId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // Official Library Documents (Syllabus/Manuals)
+    function isValidLibraryDoc(data) {
+      let requiredFields = ['name', 'size', 'type'];
+      return data.keys().hasAll(requiredFields)
+        && data.name is string && data.name.size() <= 200
+        && data.size is string && data.size.size() <= 50
+        && data.type in ['json', 'pdf'];
+    }
+
+    match /library_documents/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (getProfile(request.auth.uid).role == 'DIRECTOR' || isSuperAdmin()) && isValidLibraryDoc(incoming());
+      allow delete: if isSignedIn() && (getProfile(request.auth.uid).role == 'DIRECTOR' || isSuperAdmin());
+    }
+
+    // System Log Audit Trails
+    function isValidSystemLog(data) {
+      let requiredFields = ['type', 'timestamp', 'userId'];
+      return data.keys().hasAll(requiredFields)
+        && data.type is string && data.type.size() <= 100
+        && data.userId is string && data.userId.size() <= 128;
+    }
+
+    match /system_logs/{logId} {
+      // Accessible purely by superadmins for security compliance
+      allow read: if isSuperAdmin();
+      allow create: if isValidSystemLog(incoming());
+    }
+  }
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "code": "ACF-0901",
+    "name": "Cálculo Diferencial",
+    "semester": 1,
+    "hours": 5
+  },
+  {
+    "code": "ACC-0906",
+    "name": "Fundamentos de Investigación",
+    "semester": 1,
+    "hours": 4
+  },
+  {
+    "code": "ACA-0907",
+    "name": "Taller de Ética",
+    "semester": 1,
+    "hours": 4
+  },
+  {
+    "code": "SCH-0902",
+    "name": "Taller de Herramientas Intelectuales",
+    "semester": 1,
+    "hours": 4
+  },
+  {
+    "code": "INC-1024",
+    "name": "Química",
+    "semester": 1,
+    "hours": 4
+  },
+  {
+    "code": "INC-1008",
+    "name": "Dibujo Industrial",
+    "semester": 1,
+    "hours": 6
+  },
+  {
+    "code": "TUT-0001",
+    "name": "Tutoría",
+    "semester": 1,
+    "hours": 2
+  },
+  {
+    "code": "CLE-0001",
+    "name": "Lengua Extranjera (Inglés)",
+    "semester": 1,
+    "hours": 4
+  }
+]
