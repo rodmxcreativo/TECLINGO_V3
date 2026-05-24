@@ -87,6 +87,98 @@ function getWeeklyAcademicAssets(semanaNum: number, ejeTematico: string, kpi: st
   }
 }
 
+// Detailed grammar lessons simulator for the 18 weeks (TOEFL Prep Focus)
+function getLessonTheoryExplanation(semanaNum: number, ejeTematico: string): {
+  grammarFocus: string;
+  tableHeaders?: string[];
+  tableRows?: string[][];
+  bullets: string[];
+  toeflTip: string;
+} {
+  switch (semanaNum) {
+    case 1:
+      return {
+        grammarFocus: "THE MANDATORY SUBJECT PRONOUNS (Sujeto Obligatorio)",
+        tableHeaders: ["Subject Pronoun", "Verbo BE (Simple)", "Example Syntax"],
+        tableRows: [
+          ["I", "am", "I am a support engineer."],
+          ["You", "are", "You are ready for TOEFL."],
+          ["He / She / It", "is", "It is bound to port 3000."],
+          ["We / They", "are", "They are from Monterrey."]
+        ],
+        bullets: [
+          "Regla Base: En inglés, a diferencia del español, NUNCA se omite el pronombre sujeto. 'Es un ingeniero' se traduce obligatoriamente como 'He/She is an engineer'.",
+          "El pronombre 'It' es vital para sistemas informáticos, servidores y estados operativos de error.",
+          "Fórmulas de Cortesía: Complementa las interacciones con 'Nice to meet you', 'Good morning' y formas formales."
+        ],
+        toeflTip: "TOEFL iBT Key: En la sección de Structure & Written Expression, los reactivos suelen inducir al error omitiendo el sujeto 'It' antes de verbos meteorológicos o de estado. Recuerda siempre verificar su presencia."
+      };
+    case 2:
+      return {
+        grammarFocus: "DEMONSTRATIVES AND ARTICLES (This, That, These, Those)",
+        tableHeaders: ["Type", "Singular", "Plural", "Relative Distance"],
+        tableRows: [
+          ["Near (Cerca)", "This (This pen)", "These (These boxes)", "Immediate interaction zone"],
+          ["Far (Lejos)", "That (That system)", "Those (Those consoles)", "Auxiliary or remote server zone"]
+        ],
+        bullets: [
+          "Regla de Artículos: Usa 'A' antes de consonantes (a laptop) and 'An' antes de vocales (an error).",
+          "Para plurales irregulares o terminados en s, ch, sh, x, z, agrega '-es' (box ➔ boxes, brush ➔ brushes).",
+          "Los pronombres demostrativos clasifican objetos físicos del aula y componentes de software."
+        ],
+        toeflTip: "TOEFL iBT Key: Presta atención a la correspondencia entre adjetivos demostrativos plurales ('These') y sustantivos singulares o viceversa — es una trampa recurrente para identificar fallas en concordancia de número."
+      };
+    case 3:
+      return {
+        grammarFocus: "THE GENITIVE CASE & POSSESSIVES ('s vs Of)",
+        tableHeaders: ["Owner Profile", "Grammar Rule", "Example Output"],
+        tableRows: [
+          ["Singular Person", "Add 's", "Robert's workstation"],
+          ["Plural ends in s", "Add only '", "The engineers' database"],
+          ["Inanimate objects", "Prefer 'of'", "The port of the local proxy"]
+        ],
+        bullets: [
+          "Possessive Adjectives (My, Your, His, Her, Its, Our, Their) indican pertenencia inequívoca.",
+          "El Genitivo Sajón ('s) expresa relaciones familiares directas. Evita la traducción literal de 'La oficina de mi padre' (The office of my father) ➔ Prefiere 'My father's office'.",
+          "No dupliques la posesión: 'Her Robert's cat' es incorrecto."
+        ],
+        toeflTip: "TOEFL iBT Key: En redacción formal, el uso excesivo de la preposición 'of' denota falta de fluidez natural. Reemplazarlo apropiadamente con el genitivo sajón o adjetivos posesivos aumenta la puntuación en cohesión."
+      };
+    case 4:
+      return {
+        grammarFocus: "CAPITALIZATION & PREPOSITIONS OF PLACE",
+        tableHeaders: ["Category", "Grammar Rule", "Toefl Compliance Example"],
+        tableRows: [
+          ["Languages", "Always Capitalized", "I speak fluent English and Spanish."],
+          ["Countries", "Always Capitalized", "We are originally from Mexico."],
+          ["Origin Prep.", "Use 'From'", "She is from Monterrey, Canada."],
+          ["Location Prep.", "Use 'In'", "We are currently living in Guadalajara."]
+        ],
+        bullets: [
+          "Uso estricto de mayúsculas: Nacionalidades (French, British), Idiomas (Japanese), Ciudades y Países.",
+          "La preposición 'From' denota procedencia u origen geográfico de datos o personas.",
+          "'In' se utiliza para ciudades, países y continentes para delimitar posicionamiento operativo."
+        ],
+        toeflTip: "TOEFL iBT Key: La sección de Writing califica de forma muy estricta el uso de mayúsculas para idiomas ('english' con minúscula se considera error ortográfico grave). Revisa siempre tu texto final."
+      };
+    default:
+      return {
+        grammarFocus: `CONSOLIDATED ANALYSIS: ${ejeTematico.split(',')[0].toUpperCase()}`,
+        tableHeaders: ["Parameter", "Target Grammatical Core", "Pedagogical Standard"],
+        tableRows: [
+          ["Active Structure", "Grammar block aligned to SEP guidelines", "Level A1.1 Common European Framework"],
+          ["KPI Metric", "Speech timing, fluency under 1 minute limits", "TOEFL Primary and TOEFL Junior guidelines"]
+        ],
+        bullets: [
+          "Repasa la unidad correspondiente para estructurar respuestas espontáneas y precisas.",
+          "Fomenta la audición asidua de pistas fonológicas para erradicar el acento regional en ambientes corporativos.",
+          "Integra estas variables en tus reportes semanales de evidencias escolares."
+        ],
+        toeflTip: "TOEFL iBT Key: En las tareas integradas síncronas, priorizar la síntesis directa del texto sobre la redundancia verbal te asegura el máximo rango de aceptación por los evaluadores."
+      };
+  }
+}
+
 export function LibroVirtualDirectorCompleto() {
   const [semanaIndice, setSemanaIndice] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -161,6 +253,7 @@ export function LibroVirtualDirectorCompleto() {
   };
 
   const assets = getWeeklyAcademicAssets(activeSemana.semana, activeSemana.eje_tematico, activeSemana.kpi);
+  const theoryDetails = getLessonTheoryExplanation(activeSemana.semana, activeSemana.eje_tematico);
 
   return (
     <div className="space-y-6">
@@ -408,16 +501,68 @@ export function LibroVirtualDirectorCompleto() {
                       </p>
                     </div>
 
-                    <div className="p-4 rounded-xl bg-black/50 border border-white/5 text-xs text-white/70 leading-relaxed space-y-2.5 print:bg-gray-50 print:border-gray-200 print:text-black">
-                      <span className="text-[9.5px] font-mono font-black text-emerald-400 block uppercase tracking-wider">
-                        📝 NOTA METODOLÓGICA DE AUDITORÍA:
-                      </span>
-                      <p className="text-[11px]">
-                        El alumno está visualizando este bloque conceptual directamente en su interfaz interactiva del curso. El objetivo es proporcionar un marco referencial léxico-gramatical inmediato.
-                      </p>
-                      <p className="text-[10.5px] text-[#DEFF9A] font-semibold font-mono uppercase bg-black/30 p-2 rounded border border-white/5 print:border-gray-200 print:bg-gray-100 print:text-emerald-700">
-                        Evidencia: {activeSemana.kpi}
-                      </p>
+                    {/* CORE PEDAGOGICAL GRAMMAR FOCUS SHEET - SAME AS STUDENT */}
+                    <div className="space-y-4 pt-2">
+                      <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-white/80 space-y-2 print:bg-gray-100 print:text-black">
+                        <strong className="text-[10px] font-mono font-black text-emerald-400 block uppercase tracking-wider print:text-emerald-800">
+                          📝 CONCEPTUAL GRAMMAR CORE:
+                        </strong>
+                        <p className="text-[11px] leading-relaxed font-bold text-white print:text-black">
+                          {theoryDetails.grammarFocus}
+                        </p>
+                        <p className="text-[10.5px] leading-relaxed text-slate-350 print:text-slate-600">
+                          Revisa con atención los principios sintácticos estructurados a continuación. Este bloque contiene construcciones estandarizadas requeridas para el descriptor curricular TOEFL iBT:
+                        </p>
+                      </div>
+
+                      {/* Structured Grammar Table */}
+                      {theoryDetails.tableHeaders && theoryDetails.tableRows && (
+                        <div className="border border-white/10 rounded-xl overflow-hidden bg-black/40 print:border-gray-300 print:bg-white text-white">
+                          <table className="w-full text-left border-collapse text-[10.5px] print:text-black">
+                            <thead>
+                              <tr className="bg-white/5 border-b border-white/10 text-white/60 font-mono uppercase tracking-wide print:bg-gray-100 print:text-gray-700 print:border-gray-300">
+                                {theoryDetails.tableHeaders.map((head, i) => (
+                                  <th key={i} className="p-2.5 font-black">{head}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {theoryDetails.tableRows.map((row, i) => (
+                                <tr key={i} className="border-b border-white/5 last:border-none text-white/80 hover:bg-white/[0.02] print:border-gray-200 print:text-black">
+                                  {row.map((val, k) => (
+                                    <td key={k} className="p-2.5 font-medium">{val}</td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Logical bullets */}
+                      <div className="space-y-2 text-[11px] text-white/70 leading-normal pl-1 print:text-gray-800">
+                        {theoryDetails.bullets.map((bullet, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <span className="text-emerald-400 font-black mt-0.5">•</span>
+                            <p className="flex-1 text-slate-300 print:text-slate-800">{bullet}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Official KPI and TOEFL Tip box */}
+                      <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-white text-xs space-y-2 font-sans print:bg-amber-100/40 print:border-amber-200 print:text-black">
+                        <strong className="text-[10px] font-mono font-black text-amber-400 block uppercase tracking-wider flex items-center gap-1.5 print:text-amber-800">
+                          <Sparkles size={11} className="text-amber-400 print:text-amber-700" />
+                          TOEFL IBT PREPARATION STANDARD:
+                        </strong>
+                        <p className="text-[10.5px] leading-relaxed italic text-white/90 print:text-slate-800">
+                          "{theoryDetails.toeflTip}"
+                        </p>
+                        <div className="pt-2 border-t border-white/5 text-[9.5px] text-amber-400 font-mono font-black uppercase tracking-wide print:border-amber-200/50 print:text-amber-600">
+                          Evidencia Requerida: {activeSemana.kpi.replace('🏆 Evidencia: ', '')}
+                        </div>
+                      </div>
+
                     </div>
                   </div>
                 )}

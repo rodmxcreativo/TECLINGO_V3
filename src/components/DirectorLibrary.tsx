@@ -657,21 +657,34 @@ export function DirectorLibrary() {
     semester: number;
     shift: 'Matutino' | 'Vespertino' | 'Nocturno';
     capacity: number;
+    careerId?: string;
+    careerName?: string;
   }
 
   const [groups, setGroups] = useState<AcademicalGroup[]>(() => {
     const saved = localStorage.getItem('library_groups');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const unique: AcademicalGroup[] = [];
+          const seen = new Set<string>();
+          parsed.forEach((g: any) => {
+            if (g && g.id && !seen.has(g.id)) {
+              unique.push(g);
+              seen.add(g.id);
+            }
+          });
+          return unique;
+        }
       } catch (e) {
         // ignore
       }
     }
     return [
-      { id: 'GRP-2A', name: '2° A', code: 'GRP-2A', semester: 2, shift: 'Matutino', capacity: 35 },
-      { id: 'GRP-2B', name: '2° B', code: 'GRP-2B', semester: 2, shift: 'Vespertino', capacity: 30 },
-      { id: 'GRP-1A', name: '1° A', code: 'GRP-1A', semester: 1, shift: 'Matutino', capacity: 40 }
+      { id: 'GRP-2A', name: '2° A', code: 'GRP-2A', semester: 2, shift: 'Matutino', capacity: 35, careerId: 'isc', careerName: 'Ingeniería en Sistemas Computacionales' },
+      { id: 'GRP-2B', name: '2° B', code: 'GRP-2B', semester: 2, shift: 'Vespertino', capacity: 30, careerId: 'isc', careerName: 'Ingeniería en Sistemas Computacionales' },
+      { id: 'GRP-1A', name: '1° A', code: 'GRP-1A', semester: 1, shift: 'Matutino', capacity: 40, careerId: 'isc', careerName: 'Ingeniería en Sistemas Computacionales' }
     ];
   });
 
@@ -696,46 +709,81 @@ export function DirectorLibrary() {
 
   // Add Group Modal states
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<AcademicalGroup | null>(null);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupCode, setNewGroupCode] = useState('');
   const [newGroupSemester, setNewGroupSemester] = useState<number>(2);
   const [newGroupShift, setNewGroupShift] = useState<'Matutino' | 'Vespertino' | 'Nocturno'>('Matutino');
   const [newGroupCapacity, setNewGroupCapacity] = useState<number>(35);
+  const [newGroupCareerId, setNewGroupCareerId] = useState<string>('');
 
   const handleAddGroupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName.trim() || !newGroupCode.trim()) return;
 
-    const newGroup: AcademicalGroup = {
-      id: `GRP-${newGroupCode.trim().toUpperCase()}`,
-      name: newGroupName.trim(),
-      code: newGroupCode.trim().toUpperCase(),
-      semester: Number(newGroupSemester),
-      shift: newGroupShift,
-      capacity: Number(newGroupCapacity)
-    };
+    const selectedCareer = careers.find(c => c.id === newGroupCareerId);
 
-    setGroups(prev => {
-      if (prev.some(g => g.id === newGroup.id || g.code === newGroup.code)) {
-        alert('Ya existe un grupo con esta clave o identificador.');
-        return prev;
+    if (editingGroup) {
+      // Editing Mode
+      setGroups(prev => prev.map(g => {
+        if (g.id === editingGroup.id) {
+          return {
+            ...g,
+            name: newGroupName.trim(),
+            code: newGroupCode.trim().toUpperCase(),
+            semester: Number(newGroupSemester),
+            shift: newGroupShift,
+            capacity: Number(newGroupCapacity),
+            careerId: newGroupCareerId || undefined,
+            careerName: selectedCareer ? selectedCareer.name : undefined
+          };
+        }
+        return g;
+      }));
+
+      if (activeGroupId === editingGroup.id) {
+        setDistGrade(`${newGroupSemester}º Semestre`);
+        setDistGroup(newGroupName.trim());
+        setDistShift(newGroupShift);
       }
-      return [...prev, newGroup];
-    });
 
-    setActiveGroupId(newGroup.id);
-    setDistGrade(`${newGroup.semester}º Semestre`);
-    setDistGroup(newGroup.name);
-    setDistShift(newGroup.shift);
+      setSuccessMsg(`¡Grupo "${newGroupName.trim()}" actualizado con éxito!`);
+    } else {
+      // Creating Mode
+      const newGroup: AcademicalGroup = {
+        id: `GRP-${newGroupCode.trim().toUpperCase()}`,
+        name: newGroupName.trim(),
+        code: newGroupCode.trim().toUpperCase(),
+        semester: Number(newGroupSemester),
+        shift: newGroupShift,
+        capacity: Number(newGroupCapacity),
+        careerId: newGroupCareerId || undefined,
+        careerName: selectedCareer ? selectedCareer.name : undefined
+      };
 
+      setGroups(prev => {
+        if (prev.some(g => g.id === newGroup.id || g.code === newGroup.code)) {
+          alert('Ya existe un grupo con esta clave o identificador.');
+          return prev;
+        }
+        return [...prev, newGroup];
+      });
+
+      setActiveGroupId(newGroup.id);
+      setDistGrade(`${newGroup.semester}º Semestre`);
+      setDistGroup(newGroup.name);
+      setDistShift(newGroup.shift);
+      setSuccessMsg(`¡Grupo "${newGroup.name}" creado con éxito y establecido como activo!`);
+    }
+
+    setEditingGroup(null);
     setNewGroupName('');
     setNewGroupCode('');
     setNewGroupSemester(2);
     setNewGroupShift('Matutino');
     setNewGroupCapacity(35);
+    setNewGroupCareerId('');
     setShowAddGroupModal(false);
-    
-    setSuccessMsg(`¡Grupo "${newGroup.name}" creado con éxito y establecido como activo!`);
   };
 
   // Bulk Upload states
@@ -997,6 +1045,22 @@ export function DirectorLibrary() {
     const foundSubjects: Subject[] = [];
     const codesSeen = new Set<string>();
 
+    // Prioritize subjects from the specific linked career of this group
+    if (activeGroup.careerId) {
+      const linkedCareer = careers.find(c => c.id === activeGroup.careerId);
+      if (linkedCareer) {
+        linkedCareer.subjects.forEach(s => {
+          if (s.semester === activeGroup.semester && !codesSeen.has(s.code)) {
+            foundSubjects.push(s);
+            codesSeen.add(s.code);
+          }
+        });
+        if (foundSubjects.length > 0) {
+          return foundSubjects;
+        }
+      }
+    }
+
     careers.forEach(career => {
       career.subjects.forEach(s => {
         if (s.semester === activeGroup.semester && !codesSeen.has(s.code)) {
@@ -1050,7 +1114,18 @@ export function DirectorLibrary() {
     const saved = localStorage.getItem('library_careers');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const unique: Career[] = [];
+          const seen = new Set<string>();
+          parsed.forEach((c: any) => {
+            if (c && c.id && !seen.has(c.id)) {
+              unique.push(c);
+              seen.add(c.id);
+            }
+          });
+          return unique;
+        }
       } catch (e) {
         // ignore
       }
@@ -1071,12 +1146,22 @@ export function DirectorLibrary() {
   useEffect(() => {
     localStorage.setItem('library_careers', JSON.stringify(careers));
   }, [careers]);
+
+  const activeGroupCareer = activeGroup ? careers.find(c => c.id === activeGroup.careerId) : null;
+  const activeGroupLimitHours = activeGroupCareer ? (activeGroupCareer.limitHours || 33) : 33;
   const [expandedCareers, setExpandedCareers] = useState<Record<string, boolean>>({ isc: true });
   
   const [showAddCareerModal, setShowAddCareerModal] = useState(false);
   const [showAddSubjectModal, setShowAddSubjectModal] = useState<string | null>(null); // careerId
   const [showEditCareerModal, setShowEditCareerModal] = useState<Career | null>(null);
   const [showEditSubjectModal, setShowEditSubjectModal] = useState<{ careerId: string; subject: Subject } | null>(null);
+  
+  // Custom non-blocking confirm dialog state to bypass browser modal blocks in sandboxed iframes
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   
   // Career Form State
   const [newCareerName, setNewCareerName] = useState('');
@@ -1304,14 +1389,20 @@ export function DirectorLibrary() {
   };
 
   const handleDelete = async (docId: string, name: string) => {
-    if (!confirm(`¿Estás seguro de eliminar "${name}" de la biblioteca oficial?`)) return;
-
-    try {
-      await deleteDoc(doc(db, 'library_documents', docId));
-      setDocuments(prev => prev.filter(d => d.id !== docId));
-    } catch (e: any) {
-      alert(`Error al eliminar: ${e.message}`);
-    }
+    setDeleteConfirm({
+      title: 'Eliminar Documento',
+      message: `¿Estás seguro de que deseas eliminar permanentemente "${name}" de la biblioteca oficial?`,
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'library_documents', docId));
+          setDocuments(prev => prev.filter(d => d.id !== docId));
+          setDeleteConfirm(null);
+        } catch (e: any) {
+          console.error(`Error al eliminar: ${e.message}`);
+          setDeleteConfirm(null);
+        }
+      }
+    });
   };
 
   const handleProcessPlainText = async () => {
@@ -1562,17 +1653,6 @@ export function DirectorLibrary() {
         </button>
         <button
           type="button"
-          onClick={() => setActiveMainTab('DISTRIBUCION')}
-          className={`flex-1 py-3 px-5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${
-            activeMainTab === 'DISTRIBUCION'
-              ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-[0_0_15px_rgba(34,211,238,0.12)] font-black'
-              : 'text-white/45 hover:text-white/70 hover:bg-white/5 font-bold'
-          }`}
-        >
-          <span>📊</span> Distribución Académica
-        </button>
-        <button
-          type="button"
           onClick={() => setActiveMainTab('GRUPOS')}
           className={`flex-1 py-3 px-5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${
             activeMainTab === 'GRUPOS'
@@ -1581,6 +1661,17 @@ export function DirectorLibrary() {
           }`}
         >
           <Users size={13} className="text-amber-400" /> Grupos Escolares
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('DISTRIBUCION')}
+          className={`flex-1 py-3 px-5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${
+            activeMainTab === 'DISTRIBUCION'
+              ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-[0_0_15px_rgba(34,211,238,0.12)] font-black'
+              : 'text-white/45 hover:text-white/70 hover:bg-white/5 font-bold'
+          }`}
+        >
+          <span>📊</span> Distribución Académica
         </button>
         <button
           type="button"
@@ -2491,6 +2582,28 @@ export function DirectorLibrary() {
                 const limitHours = career.limitHours;
                 const hoursLeft = limitHours - totalHours;
                 
+                const hasNoSubjects = career.subjects.length === 0;
+                const isComplete = career.subjects.length > 0 && totalHours === limitHours;
+                const isOverLimit = career.subjects.length > 0 && totalHours > limitHours;
+
+                let statusLabel = "Carga Incompleta";
+                let ledGlowClass = "shadow-[0_0_12px_rgba(245,158,11,0.65)] bg-amber-500";
+                let ringClass = "border-amber-500/30 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:border-amber-500/50 hover:bg-amber-500/10";
+
+                if (hasNoSubjects) {
+                  statusLabel = "Sin Asignaturas";
+                  ledGlowClass = "shadow-[0_0_12px_rgba(239,68,68,0.65)] bg-red-500 animate-pulse";
+                  ringClass = "border-red-500/30 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.15)] hover:border-red-500/50 hover:bg-red-500/10";
+                } else if (isComplete) {
+                  statusLabel = "Carga Completa";
+                  ledGlowClass = "shadow-[0_0_12px_rgba(16,185,129,0.65)] bg-emerald-500";
+                  ringClass = "border-emerald-500/30 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)] hover:border-emerald-500/50 hover:bg-emerald-500/10";
+                } else if (isOverLimit) {
+                  statusLabel = "Excede Límite";
+                  ledGlowClass = "shadow-[0_0_12px_rgba(239,68,68,0.65)] bg-red-500 animate-bounce";
+                  ringClass = "border-red-500/40 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)] hover:border-red-500/65 hover:bg-red-500/10 animate-pulse";
+                }
+                
                 return (
                   <div key={career.id} className="group">
                     <GlassCard>
@@ -2502,13 +2615,21 @@ export function DirectorLibrary() {
                           <button
                             type="button"
                             onClick={() => setExpandedCareers(prev => ({ ...prev, [career.id]: !isExpanded }))}
-                            className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:bg-white/10 transition-colors"
+                            className={`w-10 h-10 rounded-xl bg-black/40 border flex items-center justify-center transition-all haptic-press cursor-pointer relative ${ringClass}`}
+                            title={statusLabel}
                           >
                             {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            {/* Accent badge glow */}
+                            <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border border-black/40 ${hasNoSubjects || isOverLimit ? 'bg-red-500' : isComplete ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                           </button>
                           
                           <div>
                             <div className="flex items-center gap-3">
+                              {/* LED Light Indicator */}
+                              <div className={`w-3 h-3 rounded-full ${ledGlowClass} flex-shrink-0 relative rounded-full`} title={statusLabel}>
+                                <span className={`absolute -inset-0.5 rounded-full ${hasNoSubjects ? 'animate-ping opacity-60 bg-red-500' : isOverLimit ? 'animate-ping opacity-60 bg-red-500' : 'opacity-0'}`} />
+                              </div>
+                              
                               <h3 className="text-white text-base md:text-xl font-black uppercase tracking-tight">
                                 {career.name}
                               </h3>
@@ -2541,11 +2662,16 @@ export function DirectorLibrary() {
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (confirm('¿Seguro que deseas eliminar esta carrera y todas sus asignaturas?\n\nEsta acción borrará todas las asignaturas vinculadas a esta carrera y no se puede deshacer.')) {
-                                      handleDeleteCareer(career.id);
-                                    }
+                                    setDeleteConfirm({
+                                      title: 'Eliminar Carrera',
+                                      message: `¿Seguro que deseas eliminar la carrera "${career.name}" y todas sus asignaturas?\n\nEsta acción borrará todas las asignaturas vinculadas a esta carrera y no se puede deshacer de forma irreversible.`,
+                                      onConfirm: () => {
+                                        handleDeleteCareer(career.id);
+                                        setDeleteConfirm(null);
+                                      }
+                                    });
                                   }}
-                                  className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all haptic-press"
+                                  className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all haptic-press cursor-pointer"
                                   title="Eliminar Carrera"
                                 >
                                   <Trash2 size={11} />
@@ -2663,9 +2789,14 @@ export function DirectorLibrary() {
                                           type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            if (confirm(`¿Seguro que deseas eliminar la asignatura ${sub.name}?`)) {
-                                              handleDeleteSubject(career.id, sub.code);
-                                            }
+                                            setDeleteConfirm({
+                                              title: 'Eliminar Asignatura',
+                                              message: `¿Seguro que deseas eliminar la asignatura "${sub.name}" (${sub.code}) de esta mallas curriculares?`,
+                                              onConfirm: () => {
+                                                handleDeleteSubject(career.id, sub.code);
+                                                setDeleteConfirm(null);
+                                              }
+                                            });
                                           }}
                                           className="p-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all haptic-press shrink-0"
                                           title="Eliminar Asignatura"
@@ -2775,21 +2906,6 @@ export function DirectorLibrary() {
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setNewGroupName('');
-                  setNewGroupCode('');
-                  setNewGroupSemester(1);
-                  setNewGroupShift('Matutino');
-                  setNewGroupCapacity(35);
-                  setShowAddGroupModal(true);
-                }}
-                className="px-4 py-2 bg-[#DEFF9A] hover:bg-[#c9f26d] text-black rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all haptic-press shrink-0 cursor-pointer shadow-[0_0_15px_rgba(222,255,154,0.15)]"
-              >
-                <Plus size={11} strokeWidth={3} /> Agregar Grupo
-              </button>
-
               <div className="flex items-center gap-2 bg-black/30 border border-white/5 rounded-xl px-3 py-2 text-white/60 text-xs font-mono">
                 <span className="text-[10px] uppercase font-black tracking-wider text-white/30">Límite Capacidad:</span>
                 <span>{activeGroup ? `${activeGroup.capacity} Alumnos` : 'N/A'}</span>
@@ -2800,30 +2916,10 @@ export function DirectorLibrary() {
             <div className="flex items-center justify-between lg:justify-end gap-4">
               <div className="flex items-center gap-2 pr-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-[#DEFF9A] shadow-[0_0_8px_#DEFF9A]" />
-                <span className="text-[9px] font-mono text-white/40 uppercase font-black tracking-wider">
-                  LÍMITE SEMESTRE: TOTAL 33 HRS / SEMANA
+                <span className="text-[9px] font-mono text-white/40 uppercase font-black tracking-wider block">
+                  LÍMITE SEMESTRE: TOTAL {activeGroupLimitHours} HRS / SEMANA
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setCareers(prev => [
-                    ...prev,
-                    {
-                      id: `career_${Date.now()}`,
-                      name: 'Nueva Especialidad Curricular',
-                      code: `NUEVO-${Math.floor(Math.random()*900+100)}`,
-                      limitHours: 33,
-                      subjects: []
-                    }
-                  ]);
-                  setSuccessMsg("¡Especialidad creada con éxito! Ve al catalogador para agregar sus mallas.");
-                  setActiveMainTab('RETICULAR');
-                }}
-                className="px-5 py-3 rounded-2xl bg-[#DEFF9A] text-black text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-[0_0_25px_rgba(222,255,154,0.25)] hover:shadow-[0_0_35px_rgba(222,255,154,0.45)] hover:scale-[1.02] haptic-press whitespace-nowrap"
-              >
-                <Plus size={14} strokeWidth={3} /> Agregar Carrera
-              </button>
             </div>
           </div>
 
@@ -2839,6 +2935,7 @@ export function DirectorLibrary() {
           ) : (
             <PreDistributionGrid
               activeGroup={activeGroup}
+              limitHours={activeGroupLimitHours}
               subjects={getFilteredSubjects()}
               teachers={effectiveTeachers.map(t => ({ id: t.id, name: t.name, spec: t.spec, maxHours: t.id === 'ana_lopez' ? 16 : t.id === 'chucho_serna' ? 18 : t.id === 'roberto_her' ? 20 : t.id === 'sofia_ruiz' ? 14 : 12 }))}
               qualifiedMap={subjectQualifiedTeachers}
@@ -2887,11 +2984,13 @@ export function DirectorLibrary() {
               <button
                 type="button"
                 onClick={() => {
+                  setEditingGroup(null);
                   setNewGroupName('');
                   setNewGroupCode('');
                   setNewGroupSemester(1);
                   setNewGroupShift('Matutino');
                   setNewGroupCapacity(35);
+                  setNewGroupCareerId(careers[0]?.id || '');
                   setShowAddGroupModal(true);
                 }}
                 className="px-5 py-3 rounded-2xl bg-[#DEFF9A] hover:bg-[#c9f26d] text-black text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-[0_0_25px_rgba(222,255,154,0.25)] hover:scale-[1.02] haptic-press shrink-0 cursor-pointer"
@@ -2972,6 +3071,12 @@ export function DirectorLibrary() {
 
                         {/* Info lines with data consistency */}
                         <div className="pt-2 divide-y divide-white/5 text-xs font-sans">
+                          {g.careerName && (
+                            <div className="grid grid-cols-2 py-2 items-center gap-1">
+                              <span className="text-white/40 uppercase text-[9px] font-black tracking-wider">Carrera:</span>
+                              <span className="text-[#38BDF8] font-bold text-[#38BDF8] text-right truncate text-[11px]" title={g.careerName}>{g.careerName}</span>
+                            </div>
+                          )}
                           <div className="grid grid-cols-2 py-2">
                             <span className="text-white/40 uppercase text-[9px] font-black tracking-wider">Límite de Cupo:</span>
                             <span className="text-white font-bold font-mono text-right">{g.capacity} Alumnos</span>
@@ -3012,16 +3117,39 @@ export function DirectorLibrary() {
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm(`¿Estás seguro de que deseas eliminar el grupo "${g.name}"?\nEsta acción es irreversible.`)) {
-                              const updated = groups.filter(item => item.id !== g.id);
-                              setGroups(updated);
-                              if (activeGroupId === g.id) {
-                                setActiveGroupId(updated[0]?.id || null);
-                              }
-                              setSuccessMsg(`¡El grupo "${g.name}" se eliminó del sistema con éxito!`);
-                            }
+                            setEditingGroup(g);
+                            setNewGroupName(g.name);
+                            setNewGroupCode(g.code);
+                            setNewGroupSemester(g.semester);
+                            setNewGroupShift(g.shift);
+                            setNewGroupCapacity(g.capacity);
+                            setNewGroupCareerId(g.careerId || '');
+                            setShowAddGroupModal(true);
                           }}
-                          className="p-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/50 text-red-405 rounded-xl transition-all flex items-center justify-center cursor-pointer"
+                          className="p-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/50 text-amber-400 rounded-xl transition-all flex items-center justify-center cursor-pointer"
+                          title="Editar Grupo"
+                        >
+                          <Pencil size={13} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteConfirm({
+                              title: "Eliminar Grupo",
+                              message: `¿Estás seguro de que deseas eliminar el grupo "${g.name}"?\nEsta acción es irreversible y desvinculará las planeaciones asociadas.`,
+                              onConfirm: () => {
+                                const updated = groups.filter(item => item.id !== g.id);
+                                setGroups(updated);
+                                if (activeGroupId === g.id) {
+                                  setActiveGroupId(updated[0]?.id || null);
+                                }
+                                setSuccessMsg(`¡El grupo "${g.name}" se eliminó del sistema con éxito!`);
+                                setDeleteConfirm(null);
+                              }
+                            });
+                          }}
+                          className="p-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/50 text-red-400 rounded-xl transition-all flex items-center justify-center cursor-pointer"
                           title="Eliminar Grupo"
                         >
                           <Trash2 size={13} />
@@ -3343,10 +3471,15 @@ export function DirectorLibrary() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm(`⚠️ PLAN ADVERTENCIA: ¿Estás completamente seguro de que deseas eliminar la carrera "${showEditCareerModal.name}"? Esta acción eliminará permanentemente la carrera, todas sus asignaturas asociadas y la retícula de este plan de estudios de forma irreversible.`)) {
-                        handleDeleteCareer(showEditCareerModal.id);
-                        setShowEditCareerModal(null);
-                      }
+                      setDeleteConfirm({
+                        title: '⚠️ Advertencia de Eliminador de Plan',
+                        message: `¿Estás completamente seguro de que deseas eliminar la carrera "${showEditCareerModal.name}"? Esta acción eliminará permanentemente la carrera, todas sus asignaturas asociadas y la retícula de este plan de estudios de forma irreversible.`,
+                        onConfirm: () => {
+                          handleDeleteCareer(showEditCareerModal.id);
+                          setShowEditCareerModal(null);
+                          setDeleteConfirm(null);
+                        }
+                      });
                     }}
                     className="px-5 py-3 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-100 text-[9px] font-black uppercase tracking-widest transition-all haptic-press cursor-pointer"
                   >
@@ -3463,12 +3596,19 @@ export function DirectorLibrary() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm(`¿Seguro que deseas eliminar la asignatura ${showEditSubjectModal.subject.name}?`)) {
-                        handleDeleteSubject(showEditSubjectModal.careerId, showEditSubjectModal.subject.code);
-                        setShowEditSubjectModal(null);
-                      }
+                      setDeleteConfirm({
+                        title: "Eliminar Asignatura",
+                        message: `¿Seguro que deseas eliminar la asignatura "${showEditSubjectModal?.subject?.name}" de esta carrera?\nEsta acción es irreversible.`,
+                        onConfirm: () => {
+                          if (showEditSubjectModal) {
+                            handleDeleteSubject(showEditSubjectModal.careerId, showEditSubjectModal.subject.code);
+                          }
+                          setShowEditSubjectModal(null);
+                          setDeleteConfirm(null);
+                        }
+                      });
                     }}
-                    className="px-5 py-3 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-100 text-[9px] font-black uppercase tracking-widest transition-all haptic-press cursor-pointer"
+                    className="px-5 py-3 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-100 text-[9px] font-black uppercase tracking-widest transition-all haptic-press cursor-pointer font-sans"
                   >
                     Borrar Asignatura
                   </button>
@@ -3507,8 +3647,12 @@ export function DirectorLibrary() {
               {/* Header */}
               <div className="flex justify-between items-center p-6 border-b border-white/5 bg-black/20 text-left">
                 <div>
-                  <span className="text-[#DEFF9A] text-[8px] font-mono font-black uppercase tracking-[0.3em]">NUEVO GRUPO DE CLASES</span>
-                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Agregar Grupo Escolar</h3>
+                  <span className={`text-[8px] font-mono font-black uppercase tracking-[0.3em] ${editingGroup ? 'text-amber-400' : 'text-[#DEFF9A]'}`}>
+                    {editingGroup ? 'MODIFICAR GRUPO' : 'NUEVO GRUPO DE CLASES'}
+                  </span>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">
+                    {editingGroup ? 'Editar Grupo Escolar' : 'Agregar Grupo Escolar'}
+                  </h3>
                 </div>
                 <button
                   type="button"
@@ -3546,18 +3690,48 @@ export function DirectorLibrary() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#38BDF8] font-bold">Vincular a Carrera / Especialidad *</label>
+                  <select
+                    required
+                    value={newGroupCareerId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewGroupCareerId(val);
+                      const matched = careers.find(c => c.id === val);
+                      if (matched) {
+                        const sem = matched.grado_semestre || 
+                                    (matched.subjects && matched.subjects.length > 0 
+                                      ? Math.max(...matched.subjects.map(s => s.semester)) 
+                                      : 1);
+                        setNewGroupSemester(sem);
+                      }
+                    }}
+                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500/50 transition-colors font-sans"
+                  >
+                    <option value="" className="text-white/40">-- Seleccionar Carrera --</option>
+                    {careers.map((career) => (
+                      <option key={career.id} value={career.id} className="bg-[#0b1219] text-white">
+                        {career.name} ({career.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-widest text-white/45">Semestre</label>
                     <select
+                      disabled
                       value={newGroupSemester}
                       onChange={(e) => setNewGroupSemester(Number(e.target.value))}
-                      className="w-full bg-[#0b1219] border border-white/5 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-[#DEFF9A]/50 transition-colors font-sans"
+                      className="w-full bg-black/20 border border-white/5 rounded-2xl px-4 py-3 text-xs text-white/50 cursor-not-allowed select-none focus:outline-none transition-colors font-sans"
                     >
                       {[1,2,3,4,5,6,7,8,9].map(n => (
                         <option key={n} value={n} className="bg-[#0b1219] text-white">{n}° Semestre</option>
                       ))}
                     </select>
+                    <p className="text-[8px] text-[#DEFF9A]/70 italic mt-0.5">Definido por la carrera</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-widest text-white/45">Turno</label>
@@ -3595,9 +3769,13 @@ export function DirectorLibrary() {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-3 rounded-xl bg-[#DEFF9A] text-black text-[9px] font-black uppercase tracking-widest transition-all shadow-[0_0_15px_rgba(222,255,154,0.15)] hover:scale-[1.01] cursor-pointer"
+                    className={`px-5 py-3 rounded-xl text-black text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                      editingGroup 
+                        ? 'bg-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:bg-amber-500' 
+                        : 'bg-[#DEFF9A] shadow-[0_0_15px_rgba(222,255,154,0.15)] hover:bg-[#c9f26d]'
+                    }`}
                   >
-                    Crear Grupo ➕
+                    {editingGroup ? 'Guardar Cambios 💾' : 'Crear Grupo ➕'}
                   </button>
                 </div>
               </form>
@@ -3877,6 +4055,65 @@ export function DirectorLibrary() {
             </motion.div>
           </div>
         )}
+
+      {/* CUSTOM DELETE CONFIRMATION DIALOG */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+            <motion.div
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              className="bg-[#0b1219] border border-red-500/20 rounded-3xl max-w-md w-full overflow-hidden shadow-[0_0_50px_rgba(239,68,68,0.15)]"
+            >
+              {/* Header */}
+              <div className="flex justify-between items-center p-6 border-b border-white/5 bg-red-950/10 text-left">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-400">
+                    <AlertTriangle size={16} />
+                  </div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                    {deleteConfirm.title}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirm(null)}
+                  className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 text-left space-y-4">
+                <p className="text-white/75 text-xs font-sans leading-relaxed whitespace-pre-wrap">
+                  {deleteConfirm.message}
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="p-6 bg-black/20 border-t border-white/5 flex justify-end gap-3 font-bold text-xs">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-4.5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/60 hover:text-white transition-all cursor-pointer font-black uppercase tracking-wider text-[10px]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteConfirm.onConfirm}
+                  className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white transition-all haptic-press cursor-pointer font-black uppercase tracking-wider text-[10px] shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+                >
+                  Sí, Confirmar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       </AnimatePresence>
 
     </div>

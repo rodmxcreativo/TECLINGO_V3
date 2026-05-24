@@ -275,9 +275,20 @@ interface ModalProps {
   onToggleStatus: () => void;
   onResetADN?: () => void;
   initialMode?: 'VIEW' | 'EDIT';
+  onSaveUser?: (updated: User) => void;
+  careers?: Career[];
 }
 
-export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus, onResetADN, initialMode = 'VIEW' }: ModalProps) {
+export function UserHierarchyModal({ 
+  user, 
+  onClose, 
+  onUpdateRole, 
+  onToggleStatus, 
+  onResetADN, 
+  initialMode = 'VIEW',
+  onSaveUser,
+  careers
+}: ModalProps) {
   const [mode, setMode] = useState<'VIEW' | 'EDIT'>(initialMode);
   const [activeTab, setActiveTab] = useState<'DOISSIER' | 'ATTENDANCE'>('DOISSIER');
   const [editData, setEditData] = useState({ ...user });
@@ -436,7 +447,29 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
                       <span className="text-white/20 text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
                         <GraduationCap size={10} /> Carrera
                       </span>
-                      <p className="text-white text-xs font-bold">{user.career || 'No asignada'}</p>
+                      {mode === 'EDIT' && (user.role === 'ALUMNO' || editData.role === 'ALUMNO') ? (
+                        <select
+                          value={editData.career || ''}
+                          onChange={(e) => setEditData({ ...editData, career: e.target.value })}
+                          className="bg-black/80 text-white text-xs font-bold w-full focus:outline-none border-b border-[#DEFF9A]/20 p-1 rounded"
+                        >
+                          {careers && careers.length > 0 ? (
+                            careers.map(c => (
+                              <option key={c.id} value={c.name}>{c.name}</option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="Ingeniería en Sistemas Computacionales">Ingeniería en Sistemas Computacionales</option>
+                              <option value="Ingeniería Industrial">Ingeniería Industrial</option>
+                              <option value="Ingeniería en Gestión Empresarial">Ingeniería en Gestión Empresarial</option>
+                              <option value="Ingeniería Electrónica">Ingeniería Electrónica</option>
+                              <option value="Licenciatura en Administración">Licenciatura en Administración</option>
+                            </>
+                          )}
+                        </select>
+                      ) : (
+                        <p className="text-white text-xs font-bold truncate">{editData.career || user.career || 'No asignada'}</p>
+                      )}
                     </div>
                     <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-1">
                       <span className="text-white/20 text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
@@ -447,15 +480,46 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
                     <div className="col-span-2 grid grid-cols-3 gap-4">
                        <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-1 text-center">
                           <span className="text-white/20 text-[8px] font-black uppercase">Módulo</span>
-                          <p className="text-[#DEFF9A] text-lg font-black">{user.module || '-'}</p>
+                          {mode === 'EDIT' ? (
+                            <input 
+                              type="number"
+                              value={editData.module !== undefined ? editData.module : (user.module || '')}
+                              onChange={(e) => setEditData({ ...editData, module: parseInt(e.target.value) || 0 })}
+                              className="bg-transparent text-center text-[#DEFF9A] text-lg font-black w-full focus:outline-none border-b border-[#DEFF9A]/20"
+                            />
+                          ) : (
+                            <p className="text-[#DEFF9A] text-lg font-black">{editData.module !== undefined ? editData.module : (user.module || '-')}</p>
+                          )}
                        </div>
                        <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-1 text-center">
                           <span className="text-white/20 text-[8px] font-black uppercase">Semestre</span>
-                          <p className="text-cyan-400 text-lg font-black">{user.semester || '-'}</p>
+                          {mode === 'EDIT' ? (
+                            <select
+                              value={editData.semester || '1'}
+                              onChange={(e) => setEditData({ ...editData, semester: e.target.value })}
+                              className="bg-black/80 text-center text-cyan-400 text-lg font-black w-full focus:outline-none border-b border-[#DEFF9A]/20"
+                            >
+                              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(sem => (
+                                <option key={sem} value={sem}>{sem}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <p className="text-cyan-400 text-lg font-black">{editData.semester || user.semester || '-'}</p>
+                          )}
                        </div>
                        <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-1 text-center">
                           <span className="text-white/20 text-[8px] font-black uppercase">Grupo</span>
-                          <p className="text-white text-lg font-black">{user.group || '-'}</p>
+                          {mode === 'EDIT' ? (
+                            <input 
+                              type="text"
+                              maxLength={3}
+                              value={editData.group || ''}
+                              onChange={(e) => setEditData({ ...editData, group: e.target.value.toUpperCase() })}
+                              className="bg-transparent text-center text-white text-lg font-black w-full focus:outline-none border-b border-[#DEFF9A]/20 uppercase"
+                            />
+                          ) : (
+                            <p className="text-white text-lg font-black">{editData.group || user.group || '-'}</p>
+                          )}
                        </div>
                     </div>
                   </div>
@@ -743,7 +807,10 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
               </button>
             ) : (
               <button 
-                onClick={() => { setMode('VIEW'); console.log('Saved', editData); }}
+                onClick={() => { 
+                  setMode('VIEW'); 
+                  if (onSaveUser) onSaveUser(editData);
+                }}
                 className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#DEFF9A] text-[#061a1a] text-[10px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all shadow-[0_0_20px_#DEFF9A80]"
               >
                 <ShieldCheck size={14} /> Guardar
@@ -807,6 +874,13 @@ export function UsersMaster() {
   const [studentLevel, setStudentLevel] = useState('A1 - Beginner');
   const [studentStatus, setStudentStatus] = useState<'ACTIVE' | 'SUSPENDED'>('ACTIVE');
 
+  // Alumno Quick Group Link states:
+  const [showLinkStudentModal, setShowLinkStudentModal] = useState(false);
+  const [studentToLink, setStudentToLink] = useState<User | null>(null);
+  const [linkStudentCareer, setLinkStudentCareer] = useState('');
+  const [linkStudentSemester, setLinkStudentSemester] = useState('1');
+  const [linkStudentGroup, setLinkStudentGroup] = useState('A');
+
   // Dynamic calculations for the Docente Monitor Panel
   const docentes = users.filter(u => u.role === 'DOCENTE');
   const totalMaxSelectedHours = docentes.reduce((acc, curr) => acc + (curr.horas_max_semanales || 20), 0);
@@ -827,7 +901,18 @@ export function UsersMaster() {
     const saved = localStorage.getItem('library_careers');
     if (saved) {
       try {
-        setAssignedCareersList(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const unique: Career[] = [];
+          const seen = new Set<string>();
+          parsed.forEach((c: any) => {
+            if (c && c.id && !seen.has(c.id)) {
+              unique.push(c);
+              seen.add(c.id);
+            }
+          });
+          setAssignedCareersList(unique);
+        }
       } catch (e) {
         // ignore
       }
@@ -938,6 +1023,22 @@ export function UsersMaster() {
     setShowAddAlumnoModal(false);
   };
 
+  const handleLinkStudentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studentToLink) return;
+
+    const updatedAlumno: User = {
+      ...studentToLink,
+      career: linkStudentCareer,
+      semester: linkStudentSemester,
+      group: linkStudentGroup
+    };
+
+    await handleSaveUser(updatedAlumno);
+    setShowLinkStudentModal(false);
+    setStudentToLink(null);
+  };
+
   const handleAddSubjectToDocente = () => {
     if (!selectedCareerId || !selectedSubjectCode) return;
     const careerObj = assignedCareersList.find(c => c.id === selectedCareerId);
@@ -985,7 +1086,7 @@ export function UsersMaster() {
   };
 
   useEffect(() => {
-    if (!currentUser?.institutionId) return;
+    const instId = currentUser?.institutionId || 'teclingo-default';
 
     if (firebaseConfig.projectId === 'remixed-project-id') {
       // Local fallback mode
@@ -1019,7 +1120,7 @@ export function UsersMaster() {
 
     const q = query(
       collection(db, 'users'),
-      where('institutionId', '==', currentUser.institutionId)
+      where('institutionId', '==', instId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -1027,7 +1128,37 @@ export function UsersMaster() {
         id: doc.id,
         ...doc.data()
       })) as User[];
-      setUsers(usersList);
+      
+      if (usersList.length === 0) {
+        // Retrieve from localStorage if any, otherwise fall back to mockUsers
+        const savedUsersList = localStorage.getItem('tecnolingo_users_list');
+        let initialList = mockUsers;
+        if (savedUsersList) {
+          try {
+            initialList = JSON.parse(savedUsersList);
+          } catch (e) {
+            // use default mockUsers
+          }
+        }
+        
+        // Write the initial/saved users list to Firestore so they don't get wiped out!
+        initialList.forEach(async (u) => {
+          try {
+            await setDoc(doc(db, 'users', u.id), {
+              ...u,
+              institutionId: instId
+            });
+          } catch (err) {
+            console.error("Error bootstrapping user to Firestore:", err);
+          }
+        });
+        
+        setUsers(initialList);
+        localStorage.setItem('tecnolingo_users_list', JSON.stringify(initialList));
+      } else {
+        setUsers(usersList);
+        localStorage.setItem('tecnolingo_users_list', JSON.stringify(usersList));
+      }
       setLoading(false);
     }, (error) => {
       console.error("Firestore loading error, falling back to local storage:", error);
@@ -1089,6 +1220,7 @@ export function UsersMaster() {
   };
 
   const filteredUsers = users.filter(user => {
+    if (user.role?.toUpperCase() === 'DIRECTOR') return false;
     const matchesRole = filter === 'ALL' || user.role?.toUpperCase() === filter.toUpperCase();
     const matchesSearch = user.name?.toLowerCase().includes(search.toLowerCase()) || 
                           user.email?.toLowerCase().includes(search.toLowerCase()) ||
@@ -1212,7 +1344,6 @@ export function UsersMaster() {
         <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
           {[
             { label: 'Todos', value: 'ALL', icon: Users },
-            { label: 'Directores', value: 'DIRECTOR', icon: Key },
             { label: 'Docentes', value: 'DOCENTE', icon: GraduationCap },
             { label: 'Alumnos', value: 'ALUMNO', icon: UserPlus },
           ].map((btn) => (
@@ -1444,6 +1575,22 @@ export function UsersMaster() {
                           <BookOpen size={14} />
                         </button>
                       )}
+                      {user.role === 'ALUMNO' && (
+                        <button 
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            setStudentToLink(user);
+                            setLinkStudentCareer(user.career || (assignedCareersList[0]?.name || 'Ingeniería en Sistemas Computacionales'));
+                            setLinkStudentSemester(user.semester || '1');
+                            setLinkStudentGroup(user.group || 'A');
+                            setShowLinkStudentModal(true);
+                          }}
+                          title="Vincular a Carrera y Grupo" 
+                          className="p-2 rounded-xl border border-white/5 text-white/35 hover:text-[#38BDF8] hover:bg-[#38BDF8]/10 hover:border-[#38BDF8]/30 transition-all"
+                        >
+                          <Users size={14} className="text-[#38BDF8]" />
+                        </button>
+                      )}
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleOpenUser(user, 'VIEW'); }}
                         title="Ver Expediente" 
@@ -1518,17 +1665,29 @@ export function UsersMaster() {
             user={selectedUser} 
             initialMode={modalMode}
             onClose={() => setSelectedUser(null)}
-            onUpdateRole={(newRole) => {
-              // Simulated update
-              setSelectedUser(prev => prev ? { ...prev, role: newRole } : null);
+            onUpdateRole={async (newRole) => {
+              if (selectedUser) {
+                const updated = { ...selectedUser, role: newRole };
+                setSelectedUser(updated);
+                await handleSaveUser(updated);
+              }
             }}
-            onToggleStatus={() => {
-              // Simulated toggle
-              setSelectedUser(prev => prev ? { ...prev, status: prev.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' } : null);
+            onToggleStatus={async () => {
+              if (selectedUser) {
+                const newStatus = selectedUser.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+                const updated = { ...selectedUser, status: newStatus as 'ACTIVE' | 'SUSPENDED' };
+                setSelectedUser(updated);
+                await handleSaveUser(updated);
+              }
             }}
             onResetADN={() => {
-              console.log('Resetting ADN for:', selectedUser.id);
+              console.log('Resetting ADN for:', selectedUser?.id);
             }}
+            onSaveUser={async (updatedUser) => {
+              setSelectedUser(updatedUser);
+              await handleSaveUser(updatedUser);
+            }}
+            careers={assignedCareersList}
           />
         )}
       </AnimatePresence>
@@ -1957,14 +2116,19 @@ export function UsersMaster() {
                         onChange={(e) => setStudentCareer(e.target.value)}
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-[#38BDF8]/40 transition-colors"
                       >
-                        {assignedCareersList.map(c => (
-                          <option key={c.id} value={c.name}>{c.name}</option>
-                        ))}
-                        <option value="Ingeniería en Sistemas Computacionales">Ingeniería en Sistemas Computacionales</option>
-                        <option value="Ingeniería Industrial">Ingeniería Industrial</option>
-                        <option value="Ingeniería en Gestión Empresarial">Ingeniería en Gestión Empresarial</option>
-                        <option value="Ingeniería Electrónica">Ingeniería Electrónica</option>
-                        <option value="Licenciatura en Administración">Licenciatura en Administración</option>
+                        {assignedCareersList && assignedCareersList.length > 0 ? (
+                          assignedCareersList.map(c => (
+                            <option key={c.id} value={c.name}>{c.name}</option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="Ingeniería en Sistemas Computacionales">Ingeniería en Sistemas Computacionales</option>
+                            <option value="Ingeniería Industrial">Ingeniería Industrial</option>
+                            <option value="Ingeniería en Gestión Empresarial">Ingeniería en Gestión Empresarial</option>
+                            <option value="Ingeniería Electrónica">Ingeniería Electrónica</option>
+                            <option value="Licenciatura en Administración">Licenciatura en Administración</option>
+                          </>
+                        )}
                       </select>
                     </div>
 
@@ -2052,6 +2216,131 @@ export function UsersMaster() {
                   Adicionar Alumno
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* QUICK LINK STUDENT TO GROUP MODAL */}
+      <AnimatePresence>
+        {showLinkStudentModal && studentToLink && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="w-full max-w-lg bg-[#09181f] border border-white/10 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-8 border-b border-white/5 flex items-center justify-between bg-black/30">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center text-[#38BDF8]">
+                    <Users size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-white text-lg font-black uppercase tracking-wider">Vincular Estudiante a Grupo</h3>
+                    <p className="text-white/40 text-[10px] uppercase font-bold tracking-normal">Asociar al estudiante con una carrera, semestre y grupo</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => { setShowLinkStudentModal(false); setStudentToLink(null); }}
+                  className="p-2 rounded-xl border border-white/5 text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Form Content */}
+              <form onSubmit={handleLinkStudentSubmit} className="p-8 space-y-6">
+                <div className="space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center gap-4">
+                  {studentToLink.photo ? (
+                    <img src={studentToLink.photo} alt={studentToLink.name} className="w-12 h-12 rounded-xl object-cover border border-white/10" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-[#38BDF8]/10 text-[#38BDF8] flex items-center justify-center font-bold font-mono">
+                      {studentToLink.name.split(' ').map(n=>n[0]).join('')}
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-white text-sm font-bold">{studentToLink.name}</p>
+                    <p className="text-white/40 text-[10px] font-mono">{studentToLink.controlNumber || 'S/N'}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-white/50">Carrera *</label>
+                    <select
+                      value={linkStudentCareer}
+                      onChange={(e) => setLinkStudentCareer(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-[#38BDF8]/40 transition-colors"
+                    >
+                      {assignedCareersList && assignedCareersList.length > 0 ? (
+                        assignedCareersList.map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="Ingeniería en Sistemas Computacionales">Ingeniería en Sistemas Computacionales</option>
+                          <option value="Ingeniería Industrial">Ingeniería Industrial</option>
+                          <option value="Ingeniería en Gestión Empresarial">Ingeniería en Gestión Empresarial</option>
+                          <option value="Ingeniería Electrónica">Ingeniería Electrónica</option>
+                          <option value="Licenciatura en Administración">Licenciatura en Administración</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-white/50">Semestre *</label>
+                      <select
+                        value={linkStudentSemester}
+                        onChange={(e) => setLinkStudentSemester(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-[#38BDF8]/40 transition-colors"
+                      >
+                        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(sem => (
+                          <option key={sem} value={sem}>{sem}° Semestre</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-white/50">Grupo *</label>
+                      <input 
+                        type="text"
+                        required
+                        maxLength={3}
+                        placeholder="A"
+                        value={linkStudentGroup}
+                        onChange={(e) => setLinkStudentGroup(e.target.value.toUpperCase())}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white placeholder:text-white/20 focus:outline-none focus:border-[#38BDF8]/40 transition-colors uppercase font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Botones */}
+                <div className="pt-4 border-t border-white/5 flex items-center justify-end gap-3 font-bold">
+                  <button
+                    type="button"
+                    onClick={() => { setShowLinkStudentModal(false); setStudentToLink(null); }}
+                    className="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/40 text-[9px] font-black uppercase tracking-[0.2em] hover:text-white hover:bg-white/10 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-[#38BDF8] text-white text-[9px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all shadow-[0_0_20px_rgba(56,189,248,0.4)]"
+                  >
+                    Vincular Grupo
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </motion.div>
         )}
@@ -2174,6 +2463,7 @@ export function UsersMaster() {
                         <option value="">-- SELECCIONAR --</option>
                         {(assignedCareersList.find(c => c.id === selectedCareerId)?.subjects || [])
                           .filter(s => Number(s.semester) === Number(selectedSemester))
+                          .filter(s => !tempAssignedSubjects.some(ts => ts.code === s.code))
                           .map(s => (
                             <option key={s.code} value={s.code}>{s.name} ({s.hours} HRS)</option>
                           ))}
@@ -2222,8 +2512,8 @@ export function UsersMaster() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/5">
-                            {tempAssignedSubjects.map((sub) => (
-                              <tr key={sub.code} className="hover:bg-white/02 transition-colors">
+                            {tempAssignedSubjects.map((sub, index) => (
+                              <tr key={`${sub.code}-${index}`} className="hover:bg-white/02 transition-colors">
                                 <td className="px-6 py-3 text-[10px] font-mono font-bold text-white/50">{sub.code}</td>
                                 <td className="px-6 py-3 text-xs font-black text-white">{sub.name}</td>
                                 <td className="px-6 py-3 text-[10px] font-bold text-cyan-400/80 uppercase tracking-tighter max-w-[150px] truncate">{sub.careerName || sub.careerId || 'N/A'}</td>

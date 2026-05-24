@@ -20,8 +20,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-// Days of the week matching original layout
-const DAYS = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES'] as const;
+// The two shifts requested by the user as grid columns
+const SHIFTS = ['MATUTINO', 'VESPERTINO'] as const;
 
 export interface Teacher {
   id: string;
@@ -41,6 +41,7 @@ interface PreDistributionGridProps {
   teachers?: Teacher[];
   qualifiedMap?: Record<string, string[]>;
   onSync?: (assignments: Record<string, string>) => void;
+  limitHours?: number;
   activeGroup?: {
     id: string;
     name: string;
@@ -83,11 +84,12 @@ export default function PreDistributionGrid({
   teachers = DEFAULT_TEACHERS,
   qualifiedMap = DEFAULT_QUALIFIED_MAP,
   onSync,
+  limitHours = 33,
   activeGroup
 }: PreDistributionGridProps) {
   
   const [matrix, setMatrix] = useState<Record<string, Record<string, string>>>(( ) => {
-    const saved = localStorage.getItem('pre_distribution_matrix_v1');
+    const saved = localStorage.getItem('pre_distribution_matrix_v2');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -97,17 +99,17 @@ export default function PreDistributionGrid({
     }
     // Set some nice initial dummy data
     return {
-      'TEC-001': { 'LUNES': 'ana_lopez', 'MARTES': 'ana_lopez' },
-      'ISC-201': { 'MIÉRCOLES': 'chucho_serna' },
-      'ISC-202': { 'JUEVES': 'roberto_her' },
-      'ISC-203': {},
-      'ISC-204': {},
-      'ISC-205': {}
+      'TEC-001': { 'MATUTINO': 'ana_lopez', 'VESPERTINO': 'sofia_ruiz' },
+      'ISC-201': { 'MATUTINO': 'chucho_serna', 'VESPERTINO': 'chucho_serna' },
+      'ISC-202': { 'MATUTINO': 'roberto_her', 'VESPERTINO': 'roberto_her' },
+      'ISC-203': { 'MATUTINO': 'sofia_ruiz' },
+      'ISC-204': { 'MATUTINO': 'luis_garcia' },
+      'ISC-205': { 'MATUTINO': 'roberto_her' }
     };
   });
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCell, setActiveCell] = useState<{ code: string; day: string } | null>(null);
+  const [activeCell, setActiveCell] = useState<{ code: string; day: string } | null>(null); // 'day' holds 'MATUTINO' or 'VESPERTINO'
   const [showExportModal, setShowExportModal] = useState<any | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -125,21 +127,21 @@ export default function PreDistributionGrid({
 
   // Save matrix to local storage on change
   useEffect(() => {
-    localStorage.setItem('pre_distribution_matrix_v1', JSON.stringify(matrix));
+    localStorage.setItem('pre_distribution_matrix_v2', JSON.stringify(matrix));
     
     // Auto-update standard format dist_assignments if sync callback exists
     const currentOnSync = onSyncRef.current;
     if (currentOnSync) {
       const standardSync: Record<string, string> = {};
+      const activeShiftKey = activeGroup?.shift?.toUpperCase() === 'VESPERTINO' ? 'VESPERTINO' : 'MATUTINO';
       subjects.forEach(sub => {
-        const assignedInDay = Object.values(matrix[sub.code] || {}) as string[];
-        // Find the first assigned teacher in the matrix for this subject to use as pre-assigned
-        const firstTeacher = assignedInDay.find(td => td);
-        standardSync[sub.code] = firstTeacher || '';
+        // Resolve teacher assigned on the active group's shift with fallback to any assigned teacher
+        const assignedTeacher = matrix[sub.code]?.[activeShiftKey] || Object.values(matrix[sub.code] || {}).find(td => td) || '';
+        standardSync[sub.code] = assignedTeacher;
       });
       currentOnSync(standardSync);
     }
-  }, [matrix, subjectCodesStr]);
+  }, [matrix, subjectCodesStr, activeGroup?.shift]);
 
   // Click outside listener for the popover
   useEffect(() => {
@@ -153,40 +155,41 @@ export default function PreDistributionGrid({
   }, []);
 
   // Compute stats in real-time
-  // Total assigned hours per subject
+  // Total assigned hours per subject (linked to the group's active shift)
   const getSubjectAssignedHours = (code: string) => {
-    const dayObj = matrix[code] || {};
-    return Object.values(dayObj).filter(id => id).length;
+    const activeShiftKey = activeGroup?.shift?.toUpperCase() === 'VESPERTINO' ? 'VESPERTINO' : 'MATUTINO';
+    const teacherId = matrix[code]?.[activeShiftKey];
+    const sub = subjects.find(s => s.code === code);
+    return teacherId ? (sub?.hours || 0) : 0;
   };
 
-  // Total assigned hours per teacher in active matrix
+  // Total assigned hours per teacher in active matrix (summing subject hours load)
   const getTeacherAssignedHoursInMatrix = (teacherId: string) => {
     let count = 0;
-    Object.keys(matrix).forEach(code => {
-      Object.keys(matrix[code] || {}).forEach(day => {
-        if (matrix[code][day] === teacherId) count++;
+    subjects.forEach(sub => {
+      SHIFTS.forEach(shift => {
+        if (matrix[sub.code]?.[shift] === teacherId) {
+          count += sub.hours;
+        }
       });
     });
     return count;
   };
 
-  // Sum of hours assigned for each column day
-  const getDayTotalHours = (day: string) => {
+  // Sum of hours assigned for each column shift
+  const getShiftTotalHours = (shift: string) => {
     let sum = 0;
-    Object.keys(matrix).forEach(code => {
-      if (matrix[code] && matrix[code][day]) {
-        sum += 1; // Each day block is 1 hour
+    subjects.forEach(sub => {
+      if (matrix[sub.code]?.[shift]) {
+        sum += sub.hours;
       }
     });
     return sum;
   };
 
-  // Business Rules checking
-  const maxDailyLimit = 8;
-
   const handleAssign = (teacherId: string | null) => {
     if (!activeCell) return;
-    const { code, day } = activeCell;
+    const { code, day } = activeCell; // 'day' actually stores shift name
     
     setMatrix(prev => {
       const subjectRow = { ...(prev[code] || {}) };
@@ -253,21 +256,21 @@ export default function PreDistributionGrid({
     const errores: string[] = [];
     const advertencias: string[] = [];
 
-    // Rule 1: check if all subjects met their weekly load
+    // Rule 1: check if all subjects met their weekly load for the active shift
+    const activeShiftKey = activeGroup?.shift?.toUpperCase() === 'VESPERTINO' ? 'VESPERTINO' : 'MATUTINO';
     subjects.forEach(sub => {
       const assigned = getSubjectAssignedHours(sub.code);
       if (assigned < sub.hours) {
-        errores.push(`La asignatura ${sub.name} (${sub.code}) tiene asignadas ${assigned} horas, de un total requerido de ${sub.hours} horas.`);
-      } else if (assigned > sub.hours) {
-        errores.push(`La asignatura ${sub.name} (${sub.code}) supera el límite semanal con ${assigned}/${sub.hours} asignadas.`);
+        errores.push(`La asignatura ${sub.name} (${sub.code}) no tiene docente asignado para el turno ${activeShiftKey} de este grupo.`);
       }
     });
 
-    // Rule 2: check day limits
-    DAYS.forEach(day => {
-      const dailyHours = getDayTotalHours(day);
-      if (dailyHours > maxDailyLimit) {
-        errores.push(`El límite de horas diario para el grupo se ha superado el ${day} con ${dailyHours}/${maxDailyLimit} horas.`);
+    // Rule 2: check shift load totals
+    const limit = limitHours;
+    SHIFTS.forEach(shift => {
+      const shiftHours = getShiftTotalHours(shift);
+      if (shiftHours > limit) {
+        errores.push(`El límite de horas semestral para el turno ${shift} (${limit} hrs) se ha superado con ${shiftHours} hrs asignadas.`);
       }
     });
 
@@ -291,15 +294,15 @@ export default function PreDistributionGrid({
   // Generate JSON plan for Scheduler engine
   const exportarParaMotorHorarios = () => {
     const distribution: any[] = [];
-    Object.keys(matrix).forEach(code => {
-      Object.keys(matrix[code] || {}).forEach(day => {
-        const teacherId = matrix[code][day];
+    subjects.forEach(sub => {
+      SHIFTS.forEach(shift => {
+        const teacherId = matrix[sub.code]?.[shift];
         if (teacherId) {
           distribution.push({
-            asignatura_id: code,
+            asignatura_id: sub.code,
             docente_id: teacherId,
-            dia: day,
-            bloques: 1
+            turno: shift,
+            horas_semanales: sub.hours
           });
         }
       });
@@ -355,12 +358,12 @@ export default function PreDistributionGrid({
                   </span>
                 </>
               ) : (
-                "Distribución Matricial por Días"
+                "Distribución Matricial por Turnos escolar"
               )
             }
           </h2>
           <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">
-            Asigna las horas semanales requeridas en los días de clase evitando empalmes y sobrecargas de horario.
+            Mapea y vincula de forma rápida los docentes calificados a la malla curricular según el turno escolar.
           </p>
         </div>
 
@@ -368,7 +371,7 @@ export default function PreDistributionGrid({
           <button
             type="button"
             onClick={exportarParaMotorHorarios}
-            className="px-5 py-3 rounded-2xl bg-cyan-400 text-black text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition duration-300 shadow-[0_0_20px_rgba(34,211,238,0.2)] hover:scale-[1.02] active:scale-95 cursor-pointer haptic-press"
+            className="px-5 py-3 rounded-2xl bg-cyan-400 text-black text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition duration-300 shadow-[0_0_20px_rgba(34,211,238,0.2)] hover:scale-[1.02] active:scale-95 cursor-pointer haptic-press font-sans font-black"
           >
             <Download size={14} strokeWidth={3} /> Validar y Exportar JSON
           </button>
@@ -378,35 +381,35 @@ export default function PreDistributionGrid({
       {/* Grid Table Container */}
       <div className="w-full rounded-3xl border border-white/10 bg-black/45 shadow-2xl overflow-hidden relative">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+          <table className="w-full border-collapse text-left">
             
-            {/* Header Columns */}
+            {/* Header Columns: exactly 2 shift columns */}
             <thead>
               <tr className="border-b border-white/5 bg-white/[0.02]">
                 <th className="p-4 text-left text-[10px] font-bold uppercase font-mono text-white/40 tracking-widest min-w-[240px]">
-                  Asignatura / Plan ISC
+                  Asignatura / Malla Curricular
                 </th>
-                <th className="p-4 text-center text-[10px] font-bold uppercase font-mono text-white/40 tracking-widest">
+                <th className="p-4 text-center text-[10px] font-bold uppercase font-mono text-white/40 tracking-widest min-w-[100px]">
                   Hrs Req.
                 </th>
-                {DAYS.map((day) => {
-                  const dayTotalHours = getDayTotalHours(day);
-                  const isDayOverLimit = dayTotalHours > maxDailyLimit;
+                {SHIFTS.map((shift) => {
+                  const shiftTotalHours = getShiftTotalHours(shift);
+                  const isShiftOverLimit = shiftTotalHours > limitHours;
                   return (
                     <th 
-                      key={day} 
-                      className="p-4 text-center min-w-[130px]"
+                      key={shift} 
+                      className="p-4 text-center min-w-[200px]"
                     >
                       <div className="space-y-0.5">
                         <span className="text-[10px] font-black uppercase font-mono text-white/70 tracking-widest block">
-                          {day}
+                          TURNO {shift}
                         </span>
-                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
-                          isDayOverLimit 
+                        <span className={`text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded border inline-block ${
+                          isShiftOverLimit 
                             ? 'bg-red-500/10 border-red-500/25 text-red-400 animate-pulse' 
                             : 'bg-white/5 border-white/5 text-slate-400'
                         }`}>
-                          {dayTotalHours} / {maxDailyLimit} hrs
+                          {shiftTotalHours} / {limitHours} hrs asignadas
                         </span>
                       </div>
                     </th>
@@ -425,7 +428,7 @@ export default function PreDistributionGrid({
                   <tr 
                     key={sub.code} 
                     className={`transition-all duration-300 hover:bg-white/[0.01] ${
-                      isCompleted ? 'opacity-60 bg-white/[0.01]' : ''
+                      isCompleted ? 'bg-emerald-500/[0.02]' : ''
                     }`}
                   >
                     
@@ -438,7 +441,7 @@ export default function PreDistributionGrid({
                         <div className="truncate">
                           <p className="text-xs font-black text-white uppercase truncate">{sub.name}</p>
                           <p className="text-white/30 text-[8px] font-mono font-bold uppercase tracking-wider mt-0.5">
-                            Carga Semestral • Sem. 2
+                            Carga Semestral • Semestre {activeGroup?.semester || 1}
                           </p>
                         </div>
                       </div>
@@ -450,76 +453,70 @@ export default function PreDistributionGrid({
                         <span className={`text-[10px] font-mono font-black ${
                           isCompleted ? 'text-emerald-400' : 'text-[#DEFF9A]'
                         }`}>
-                          {assigned} / {sub.hours}
+                          {isCompleted ? `${sub.hours} / ${sub.hours}` : `0 / ${sub.hours}`}
                         </span>
                         <div className="w-12 h-1 bg-white/5 rounded-full mt-1.5 overflow-hidden">
                           <div 
                             className={`h-full transition-all duration-500 ${
                               isCompleted ? 'bg-emerald-400' : 'bg-[#DEFF9A]'
                             }`}
-                            style={{ width: `${Math.min(100, (assigned / sub.hours) * 100)}%` }}
+                            style={{ width: `${isCompleted ? 100 : 0}%` }}
                           />
                         </div>
                       </div>
                     </td>
 
-                    {/* Class scheduling cells */}
-                    {DAYS.map((day) => {
-                      const teacherId = matrix[sub.code]?.[day];
+                    {/* Class scheduling cells for Matutino and Vespertino */}
+                    {SHIFTS.map((shift) => {
+                      const teacherId = matrix[sub.code]?.[shift];
                       const currentTeacher = teachers.find(t => t.id === teacherId);
-                      const isCellActive = activeCell?.code === sub.code && activeCell?.day === day;
+                      const isCellActive = activeCell?.code === sub.code && activeCell?.day === shift;
                       
-                      // Identify column-specific day sum limits check for highlights
-                      const dayHrs = getDayTotalHours(day);
-                      const isGroupDayFull = dayHrs >= maxDailyLimit;
+                      const shiftTotalHrs = getShiftTotalHours(shift);
+                      const isShiftOverLimit = shiftTotalHrs >= limitHours;
                       
-                      // Row limit status checks
-                      const isCompletedAndCellEmpty = isCompleted && !teacherId;
+                      // Highlight matching active group's shift in yellow/cyan border
+                      const isActiveGroupShift = activeGroup?.shift?.toUpperCase() === shift;
 
-                      // Display character/badge
                       return (
                         <td 
-                          key={day} 
+                          key={shift} 
                           className="p-3 relative text-center"
                         >
                           <div className="relative">
                             <button
                               type="button"
-                              disabled={isCompletedAndCellEmpty || (isGroupDayFull && !teacherId)}
                               onClick={() => {
-                                setActiveCell({ code: sub.code, day });
+                                setActiveCell({ code: sub.code, day: shift });
                                 setHighlightedIndex(0);
                               }}
-                              className={`w-full py-3.5 px-2 rounded-2xl border text-center transition-all duration-300 haptic-press shrink-0 text-xs font-black uppercase tracking-wider outline-none flex flex-col items-center justify-center gap-1 min-h-[58px] select-none ${
+                              className={`w-full py-4 px-3 rounded-2xl border text-center transition-all duration-300 haptic-press shrink-0 text-xs font-black uppercase tracking-wider outline-none flex flex-col items-center justify-center gap-1.5 min-h-[64px] select-none ${
                                 teacherId
-                                  ? 'bg-cyan-500/10 border-cyan-400/30 text-[#DEFF9A] shadow-[inset_0_0_10px_rgba(34,211,238,0.05)] hover:border-cyan-400'
-                                  : isCompletedAndCellEmpty
-                                    ? 'bg-white/[0.01] border-white/5 text-white/20 select-none cursor-default'
-                                    : isGroupDayFull
-                                      ? 'bg-red-500/5 border-red-500/15 text-red-400/40 cursor-not-allowed select-none'
-                                      : 'bg-black/20 border-white/5 text-white/30 hover:bg-black/40 hover:border-white/20 hover:text-white/60 cursor-pointer'
+                                  ? 'bg-cyan-500/10 border-cyan-400/35 text-[#DEFF9A] shadow-[inset_0_0_10px_rgba(34,211,238,0.05)] hover:border-cyan-400'
+                                  : isShiftOverLimit
+                                    ? 'bg-red-500/5 border-red-500/10 text-red-400/30 cursor-not-allowed'
+                                    : isActiveGroupShift 
+                                      ? 'bg-cyan-400/5 border-cyan-400/20 text-cyan-400/60 hover:bg-cyan-400/10 hover:border-cyan-400'
+                                      : 'bg-black/20 border-white/5 text-white/30 hover:bg-black/40 hover:border-white/15 hover:text-white/60 cursor-pointer'
                               }`}
                               title={
-                                isCompletedAndCellEmpty
-                                  ? '✅ Carga semanal completada'
-                                  : isGroupDayFull && !teacherId
-                                    ? '⚠️ Límite diario del grupo alcanzado'
-                                    : teacherId
-                                      ? `Asignado: ${currentTeacher?.name}`
-                                      : 'No Asignado (Mapear bloque)'
+                                teacherId
+                                  ? `Asignado: ${currentTeacher?.name}`
+                                  : isShiftOverLimit
+                                    ? '⚠️ Límite de carga horaria superado'
+                                    : `Asignar docente al turno ${shift}`
                               }
                             >
                               {teacherId ? (
                                 <>
-                                  <span className="text-[10px] font-black tracking-tight">{currentTeacher?.name.split(' ').slice(-1)[0]}</span>
-                                  <span className="text-[7.5px] font-mono font-bold text-white/50">{currentTeacher?.spec.split('/')[0]}</span>
+                                  <span className="text-[10.5px] font-black tracking-tight text-white">{currentTeacher?.name}</span>
+                                  <span className="text-[7.5px] font-mono font-bold text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded uppercase">{currentTeacher?.spec.split('/')[0]}</span>
                                 </>
-                              ) : isCompletedAndCellEmpty ? (
-                                <span className="text-[8.5px] font-bold text-white/20">Carga Lista</span>
-                              ) : isGroupDayFull ? (
-                                <span className="text-[8.5px] font-bold text-red-400/40">Día Lleno</span>
                               ) : (
-                                <span className="text-[14px]">...</span>
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <span className="text-[12px] font-bold text-white/15">...</span>
+                                  <span className="text-[7px] font-mono font-black text-white/20 tracking-wider">VINCULAR</span>
+                                </div>
                               )}
                             </button>
 
@@ -532,15 +529,15 @@ export default function PreDistributionGrid({
                                 >
                                   {/* Title block */}
                                   <div className="border-b border-white/5 pb-2">
-                                    <span className="text-[7.5px] font-black text-cyan-400 uppercase tracking-widest font-mono block">
-                                      {day} • {sub.code}
+                                    <span className="text-[8px] font-black text-cyan-400 uppercase tracking-widest font-mono block">
+                                      TUNRO {shift} • {sub.code} • {sub.hours} HORAS
                                     </span>
                                     <h4 className="text-xs font-black text-white uppercase truncate">{sub.name}</h4>
                                   </div>
 
                                   {/* SECTION A: Pre-Asignados */}
                                   <div className="space-y-1.5">
-                                    <span className="text-[8px] font-mono font-black text-white/30 uppercase tracking-widest block">
+                                    <span className="text-[7.5px] font-mono font-black text-white/40 uppercase tracking-widest block">
                                       ➤ Docentes Calificados:
                                     </span>
                                     {getQualifiedTeachersForSubject(sub.code).length === 0 ? (
@@ -554,10 +551,10 @@ export default function PreDistributionGrid({
                                             <button 
                                               key={teacher.id}
                                               type="button"
-                                              disabled={isFull && matrix[sub.code]?.[day] !== teacher.id}
+                                              disabled={isFull && matrix[sub.code]?.[shift] !== teacher.id}
                                               onClick={() => handleAssign(teacher.id)}
                                               className={`w-full p-2 rounded-xl text-left text-[11px] font-bold transition flex items-center justify-between cursor-pointer ${
-                                                matrix[sub.code]?.[day] === teacher.id
+                                                matrix[sub.code]?.[shift] === teacher.id
                                                   ? 'bg-cyan-500/10 border border-cyan-400/35 text-cyan-300'
                                                   : isFull
                                                     ? 'opacity-40 bg-black/5 text-white/20 cursor-not-allowed'
@@ -577,7 +574,7 @@ export default function PreDistributionGrid({
 
                                   {/* SECTION B: Buscar Otro Docente */}
                                   <div className="space-y-2 pt-1 border-t border-white/5">
-                                    <span className="text-[8px] font-mono font-black text-white/30 uppercase tracking-widest block">
+                                    <span className="text-[7.5px] font-mono font-black text-white/40 uppercase tracking-widest block">
                                       ➤ Buscar Otro Docente:
                                     </span>
                                     <div className="relative">
@@ -605,7 +602,7 @@ export default function PreDistributionGrid({
                                             type="button"
                                             onClick={() => handleAssign(teacher.id)}
                                             className={`w-full p-2 rounded-xl text-left text-[10px] font-medium transition flex items-center justify-between cursor-pointer ${
-                                              matrix[sub.code]?.[day] === teacher.id
+                                              matrix[sub.code]?.[shift] === teacher.id
                                                 ? 'bg-cyan-500/10 text-cyan-300'
                                                 : highlightedIndex === index
                                                   ? 'bg-white/10 text-white font-bold'
@@ -665,8 +662,8 @@ export default function PreDistributionGrid({
             <UserCheck size={20} />
           </div>
           <div>
-            <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block">Capacidad Docentes</span>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
+            <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block font-sans font-bold">Capacidad Docentes</span>
+            <div className="flex items-baseline gap-1.5 mt-0.5 font-sans">
               <span className="text-xl font-black text-white">
                 {teachers.filter(t => getTeacherAssignedHoursInMatrix(t.id) < t.maxHours).length} / {teachers.length}
               </span>
@@ -681,8 +678,8 @@ export default function PreDistributionGrid({
             <CheckCircle size={20} />
           </div>
           <div>
-            <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block">Asignaturas Cubiertas</span>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
+            <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block font-sans font-bold">Asignaturas Cubiertas</span>
+            <div className="flex items-baseline gap-1.5 mt-0.5 font-sans">
               <span className="text-xl font-black text-white">
                 {subjects.filter(s => getSubjectAssignedHours(s.code) >= s.hours).length} / {subjects.length}
               </span>
@@ -699,12 +696,12 @@ export default function PreDistributionGrid({
                 <ShieldAlert size={20} />
               </div>
               <div>
-                <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block">Advertencias / Bloqueos</span>
-                <div className="flex items-baseline gap-1.5 mt-0.5 animate-pulse">
-                  <span className="text-xl font-black text-red-400">
+                <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block font-sans font-bold">Advertencias / Cargas</span>
+                <div className="flex items-baseline gap-1.5 mt-0.5 animate-pulse font-sans">
+                  <span className="text-xl font-black text-red-405">
                     {validarDistribucion().errores.length}
                   </span>
-                  <span className="text-[9px] font-mono text-red-400 font-bold uppercase">Detectados</span>
+                  <span className="text-[9px] font-mono text-red-500 font-bold uppercase">Incompletas</span>
                 </div>
               </div>
             </>
@@ -714,10 +711,10 @@ export default function PreDistributionGrid({
                 <CheckCircle size={20} />
               </div>
               <div>
-                <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block">Conflictos / Reglas</span>
-                <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block font-sans font-bold">Distribución de Reglas</span>
+                <div className="flex items-baseline gap-1.5 mt-0.5 font-sans">
                   <span className="text-xl font-black text-emerald-400">0</span>
-                  <span className="text-[9px] font-mono text-emerald-400 font-bold uppercase">Estado Verde</span>
+                  <span className="text-[9px] font-mono text-emerald-400 font-bold uppercase">100% Válido</span>
                 </div>
               </div>
             </>
@@ -743,7 +740,7 @@ export default function PreDistributionGrid({
                     MOTOR DE ASIGNACIÓN INTEGRADO
                   </span>
                   <h3 className="text-lg font-black text-white uppercase tracking-tight">
-                    Validación y Estructura JSON
+                    Validación y Estructura JSON por Turnos
                   </h3>
                 </div>
                 <button
@@ -768,7 +765,7 @@ export default function PreDistributionGrid({
                   </span>
                   {showExportModal.errores.length === 0 && showExportModal.advertencias.length === 0 ? (
                     <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono font-bold flex items-center gap-2">
-                      <CheckCircle size={16} /> ¡Cero advertencias detectadas! El plan es 100% válido y listo para el secuenciador.
+                      <CheckCircle size={16} /> ¡Cero advertencias detectadas! El plan es 100% válido y listo para el secuenciador de turnos.
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
@@ -814,7 +811,7 @@ export default function PreDistributionGrid({
                 <button
                   type="button"
                   onClick={() => setShowExportModal(null)}
-                  className="px-5 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer"
+                  className="px-5 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer font-bold"
                 >
                   Cerrar
                 </button>
